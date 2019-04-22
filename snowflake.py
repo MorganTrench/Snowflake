@@ -3,28 +3,52 @@ from matplotlib.patches import RegularPolygon
 import numpy as np
 from math import sqrt
 import copy
+import random
+import time
 
 root = sqrt(3)/2
 
 alpha = 1
-beta = 0.1
-gamma = 0.1
+beta = 0.35
+gamma = 0.001
 
+colors = ['red', 'orange', 'yellow', 'green', 'blue']
 
 class Cell:
     def __init__(self, pos, water):
         self.pos = pos
         self.water = water
+        self.patch = None
     
     def getCartesian(self):
-        plotx = 0.5 * (self.pos[0] - self.pos[1])
-        ploty = root * (self.pos[2])
-        return (plotx, ploty)
+        x = 0.5 * (self.pos[0] - self.pos[1])
+        y = root * (self.pos[2])
+        return (x, y)
+
+    def calcColor(self):
+        if self.water < 0.25:
+            return 'black'
+        if self.water < 0.5:
+            return 'darkblue'
+        if self.water < 0.75:
+            return 'blue'
+        if self.water < 1:
+            return 'lightsteelblue'
+        if self.water >= 1:
+            return 'ghostwhite'
+        return 'red'
+
+    def getShape(self):
+        if self.patch is None:
+            self.patch = RegularPolygon(self.getCartesian(), radius=0.5, numVertices=6, edgecolor='k', color=self.calcColor())
+        else:
+            self.patch.color = self.calcColor()
+        return self.patch
 
     def isReceptive(self, grid):
         if (self.water >= 1):
             return True
-        for cell in [grid[coord] for coord in self.getNeighbourCoordinates()]:
+        for cell in [grid[coord] for coord in self.getNeighbourCoordinates() if coord in grid]:
             if (cell.water >= 1):
                 return True
         return False
@@ -55,7 +79,7 @@ class Cell:
             return Cell(self.pos, 0)
     
     def calcLocalDiffusion(self, diffuseGrid, newDiffuseGrid):
-        neighbours = [diffuseGrid[coord] for coord in self.getNeighbourCoordinates()]
+        neighbours = [diffuseGrid[coord] for coord in self.getNeighbourCoordinates() if coord in diffuseGrid]
         newDiffuseGrid[self.pos] = Cell(self.pos, self.water + 0.5*(-self.water + sum(n.water for n in neighbours) / len(neighbours)))
 
     def addConstant(self):
@@ -72,12 +96,13 @@ class HexGrid:
                 for z in range(-radius, radius+1):
                     if ((x + y + z) == 0):
                         self.data[(x, y, z)] = Cell((x, y, z), beta)
+        self.data[(0, 0, 0)].water = 1
 
-    def step(self, step):
+    def step(self):
         # Diffusion map
         non_receptive = {}
         for cell in self.data.values():
-            non_receptive[cell.pos] = cell.toDiffuseCell()
+            non_receptive[cell.pos] = cell.toDiffuseCell(self.data)
         diffusion = {}
         for cell in non_receptive.values():
             cell.calcLocalDiffusion(non_receptive, diffusion)
@@ -85,7 +110,7 @@ class HexGrid:
         # Receptive map
         receptive = {}
         for cell in self.data.values():
-            receptive[cell.pos] = cell.toReceptiveCell()
+            receptive[cell.pos] = cell.toReceptiveCell(self.data)
         for cell in receptive.values():
             cell.addConstant()
         
@@ -95,17 +120,18 @@ class HexGrid:
 
 def drawGrid(grid):
     plt.axes()
+    plt.gca().set_facecolor('lightgreen')
     for cell in grid.data.values():
-        plotx = (cell.pos[0] - 0.5*cell.pos[1] - 0.5*cell.pos[2])
-        ploty = np.sin(60) * (cell.pos[1] - cell.pos[2])
-        hexagon = RegularPolygon(
-            cell.getCartesian(), radius=0.5, numVertices=6, edgecolor='k')
-        plt.gca().add_patch(hexagon)
+        plt.gca().add_patch(cell.getShape())
     plt.axis('scaled')
     plt.show()
 
-
-grid = HexGrid(5, beta, gamma)
+grid = HexGrid(50, beta, gamma)
+iterations = 500
+for i in range(1, iterations + 1):
+    t = time.time()
+    grid.step()
+    print('{:.1%}'.format(i/iterations), time.time() - t)
 drawGrid(grid)
 input("Press Enter to close...")
 
